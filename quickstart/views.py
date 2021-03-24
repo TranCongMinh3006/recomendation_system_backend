@@ -10,19 +10,44 @@ from django.http import JsonResponse
 from rest_framework.response import Response
 import datetime
 
+#----------------------------------------------------------------
+
+import pickle
+import numpy as np 
+import pandas as pd
+import keras
+from keras.layers import *
+from keras.models import Model
+from keras import backend as K
+import tensorflow as tf
+
+class Multiple_Score:
+    def __init__(self, number_articles):
+        user_rep = Input(shape=(768,), dtype='float32')
+        candidates = [Input(shape=(768,), dtype='float32') for _ in range(number_articles)]
+        logits = [keras.layers.dot([user_rep, candidate_vec], axes=-1) for candidate_vec in candidates]
+        logits = keras.layers.Activation(keras.activations.sigmoid)(keras.layers.concatenate(logits))
+        inputs_tt = candidates + [user_rep]
+        self.Score = Model(candidates+[user_rep], logits)
+number_articles = 200#len(all_articles_represent)
+multiScore_model = Multiple_Score(number_articles)
+print(multiScore_model)
+#----------------------------------------------------------------
+
+#--------------------------------------------------------------------
 
 # time_now = int(datetime.datetime.now().timestamp())
 # cache_days = 200
 # time_72h_before = time_now - 60 * 60 * 24 * cache_days
 
 # number_of_articles = 200
-# # -----------------------------------------------------------------
-# # chỗ này là các bài báo mới
+# # # -----------------------------------------------------------------
+# # # chỗ này là các bài báo mới
 # new_articles = Articles.objects.filter(time__gt=time_72h_before)[:number_of_articles]
 
 
-# # ----------------------------------------------------------------
-# # chỗ này là các bài báo hot
+# # # ----------------------------------------------------------------
+# # # chỗ này là các bài báo hot
 # hot_article_in72h = Articles.objects.filter(
 #     time__gt=time_72h_before)
 # hot_article_in72h_id = hot_article_in72h.values_list('articleID', flat=True)
@@ -44,12 +69,26 @@ import datetime
 
 # ------------------------------------------------
 # chỗ này là các bài báo được load lên theo dạng aritcleId : representation sau khi runserver
-# new_dic ={}
-# news = Articles.objects.all()[:200]
-# list_of_articleId = news.values_list('articleID', flat=True)
+all_articles_represent ={}
+news = Articles.objects.all()[:200]
+list_of_articleId = news.values_list('articleID', flat=True)
+for x in list_of_articleId:
+    all_articles_represent[x] = Articles.objects.get(pk=x).representation
 
-# for x in list_of_articleId:
-#     new_dic[x] = Articles.objects.get(pk=x).representation
+test =all_articles_represent[x] 
+print(type(test))
+print(test)
+def convert_article_rep():
+    all_articles_represent_convert = dict()
+    for articleID in all_articles_represent:
+        represent = all_articles_represent[articleID]
+        represent_reconvert = np.frombuffer(represent, dtype='float32').reshape(1,30,768)
+        all_articles_represent_convert[articleID] = represent_reconvert
+    return all_articles_represent_convert
+
+# all_articles_represent_convert = convert_article_rep(all_articles_represent)
+# print('conver oke:', len(all_articles_represent_convert))
+
 
 # print(new_dic)
 
@@ -167,8 +206,27 @@ class ArticleViewSet(viewsets.ModelViewSet):
 
     @action(detail=False)
     def get_personal_article(self, request):
-        userID = request.GET['userID']
+        data = request.data
+        userID = data['userID']
         repre_of_user = Users.objects.get(userId = userID).representation
+
+        # load input article_rep for score
+        multiple_inputs_newsEncoder = []
+        for articleID in sample_candidate:
+            article_represent = np.array(all_articles_represent_convert[articleID])
+            input_newsEncoder = [userid_embedd, article_represent]
+            candidate_rep = newsEncoder.news_encoder.predict(input_newsEncoder)
+            multiple_inputs_newsEncoder.append(candidate_rep)
+        print(len(multiple_inputs_newsEncoder))
+
+        user_vector = userVector_dict[user]
+        newsEncoder_sample = multiple_inputs_newsEncoder
+        traingen = newsEncoder_sample + [user_vector]
+        print(len(traingen))
+        all_score = multiScore_model.Score.predict(traingen)
+
+        end = time.time()
+        print(f'time: {(end-start)/60}minutes')
         print(userID, repre_of_user)
         article_id = Articles.objects.all().order_by(
             '-time',)[:100].values_list('articleID', flat=True)
@@ -179,8 +237,10 @@ class ArticleViewSet(viewsets.ModelViewSet):
 #  đã ok , tim theo str trong form data
     @action(detail=False)
     def search(self, request):
-        print(print(request.GET))
-        article_id = Articles.objects.filter(title__contains = "tiếp nhận").order_by(
+        # data = request.data
+        # print(data)
+        # str1 = str(data['str'])
+        article_id = Articles.objects.filter(title__contains = "hôm").order_by(
             '-time',)[:100].values_list('articleID', flat=True)
         dic = {}
         dic['articleID'] = list(article_id)
@@ -282,3 +342,10 @@ class Article_CategoryViewSet(viewsets.ModelViewSet):
 
 # update_representation_of_articles(articles_represent)
 
+# from django.http import HttpResponse
+# import datetime
+
+# def get_personal_article(request):
+#     now = datetime.datetime.now()
+#     html = "<html><body>It is now %s.</body></html>" % now
+#     return HttpResponse(html)
