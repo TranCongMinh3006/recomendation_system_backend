@@ -12,26 +12,26 @@ import datetime
 
 #----------------------------------------------------------------
 
-import pickle
-import numpy as np 
-import pandas as pd
-import keras
-from keras.layers import *
-from keras.models import Model
-from keras import backend as K
-import tensorflow as tf
+# import pickle
+# import numpy as np 
+# import pandas as pd
+# import keras
+# from keras.layers import *
+# from keras.models import Model
+# from keras import backend as K
+# import tensorflow as tf
 
-class Multiple_Score:
-    def __init__(self, number_articles):
-        user_rep = Input(shape=(768,), dtype='float32')
-        candidates = [Input(shape=(768,), dtype='float32') for _ in range(number_articles)]
-        logits = [keras.layers.dot([user_rep, candidate_vec], axes=-1) for candidate_vec in candidates]
-        logits = keras.layers.Activation(keras.activations.sigmoid)(keras.layers.concatenate(logits))
-        inputs_tt = candidates + [user_rep]
-        self.Score = Model(candidates+[user_rep], logits)
-number_articles = 200#len(all_articles_represent)
-multiScore_model = Multiple_Score(number_articles)
-print(multiScore_model)
+# class Multiple_Score:
+#     def __init__(self, number_articles):
+#         user_rep = Input(shape=(768,), dtype='float32')
+#         candidates = [Input(shape=(768,), dtype='float32') for _ in range(number_articles)]
+#         logits = [keras.layers.dot([user_rep, candidate_vec], axes=-1) for candidate_vec in candidates]
+#         logits = keras.layers.Activation(keras.activations.sigmoid)(keras.layers.concatenate(logits))
+#         inputs_tt = candidates + [user_rep]
+#         self.Score = Model(candidates+[user_rep], logits)
+# number_articles = 200#len(all_articles_represent)
+# multiScore_model = Multiple_Score(number_articles)
+# print(multiScore_model)
 #----------------------------------------------------------------
 
 #--------------------------------------------------------------------
@@ -69,22 +69,22 @@ print(multiScore_model)
 
 # ------------------------------------------------
 # chỗ này là các bài báo được load lên theo dạng aritcleId : representation sau khi runserver
-all_articles_represent ={}
-news = Articles.objects.all()[:200]
-list_of_articleId = news.values_list('articleID', flat=True)
-for x in list_of_articleId:
-    all_articles_represent[x] = Articles.objects.get(pk=x).representation
+# all_articles_represent ={}
+# news = Articles.objects.all()[:200]
+# list_of_articleId = news.values_list('articleID', flat=True)
+# for x in list_of_articleId:
+#     all_articles_represent[x] = Articles.objects.get(pk=x).representation
 
-test =all_articles_represent[x] 
-print(type(test))
-print(test)
-def convert_article_rep():
-    all_articles_represent_convert = dict()
-    for articleID in all_articles_represent:
-        represent = all_articles_represent[articleID]
-        represent_reconvert = np.frombuffer(represent, dtype='float32').reshape(1,30,768)
-        all_articles_represent_convert[articleID] = represent_reconvert
-    return all_articles_represent_convert
+# test =all_articles_represent[x] 
+# print(type(test))
+# print(test)
+# def convert_article_rep():
+#     all_articles_represent_convert = dict()
+#     for articleID in all_articles_represent:
+#         represent = all_articles_represent[articleID]
+#         represent_reconvert = np.frombuffer(represent, dtype='float32').reshape(1,30,768)
+#         all_articles_represent_convert[articleID] = represent_reconvert
+#     return all_articles_represent_convert
 
 # all_articles_represent_convert = convert_article_rep(all_articles_represent)
 # print('conver oke:', len(all_articles_represent_convert))
@@ -155,6 +155,18 @@ class User_Comment_ViewSet(viewsets.ModelViewSet):
     queryset = User_Comments.objects.all()
     serializer_class = User_CommentSerializer
     # permission_classes = [permissions.IsAuthenticated]
+    @action(detail=False, methods=['post'])
+    def get_comment_by_articleID(self, request):
+        data = request.data
+        articleID = data['articleID']
+        comments_by_articleID = User_Comments.objects.filter(articleID=articleID)
+        page = self.paginate_queryset(comments_by_articleID)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(comments_by_articleID, many=True)
+        return Response(serializer.data)
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -204,43 +216,52 @@ class ArticleViewSet(viewsets.ModelViewSet):
     serializer_class = ArticlesSerializer
     # permission_classes = [permissions.IsAuthenticated]
 
-    @action(detail=False)
+    @action(detail=False,methods=['post'])
     def get_personal_article(self, request):
-        data = request.data
-        userID = data['userID']
-        repre_of_user = Users.objects.get(userId = userID).representation
+        # data = request.data
+        # userID = data['userID']
+        # repre_of_user = Users.objects.get(userId = userID).representation
+
+        # #them userId vao bang user neu chua co trong bang users
+        # check_user_exist = Users.objects.filter(userId = userID).count() 
+        # if check_user_exist == 0:
+        #     new_user = Users.objects.create(userId = userID, representation = "day la represen cua user id = -1")
+        #     new_user.save()
+        if request.method == 'POST':
+            data = request.data
+            userID = data['userID']
+            print(userID)
 
         # load input article_rep for score
-        multiple_inputs_newsEncoder = []
-        for articleID in sample_candidate:
-            article_represent = np.array(all_articles_represent_convert[articleID])
-            input_newsEncoder = [userid_embedd, article_represent]
-            candidate_rep = newsEncoder.news_encoder.predict(input_newsEncoder)
-            multiple_inputs_newsEncoder.append(candidate_rep)
-        print(len(multiple_inputs_newsEncoder))
+        # multiple_inputs_newsEncoder = []
+        # for articleID in sample_candidate:
+        #     article_represent = np.array(all_articles_represent_convert[articleID])
+        #     input_newsEncoder = [userid_embedd, article_represent]
+        #     candidate_rep = newsEncoder.news_encoder.predict(input_newsEncoder)
+        #     multiple_inputs_newsEncoder.append(candidate_rep)
+        # print(len(multiple_inputs_newsEncoder))
 
-        user_vector = userVector_dict[user]
-        newsEncoder_sample = multiple_inputs_newsEncoder
-        traingen = newsEncoder_sample + [user_vector]
-        print(len(traingen))
-        all_score = multiScore_model.Score.predict(traingen)
+        # user_vector = userVector_dict[user]
+        # newsEncoder_sample = multiple_inputs_newsEncoder
+        # traingen = newsEncoder_sample + [user_vector]
+        # print(len(traingen))
+        # all_score = multiScore_model.Score.predict(traingen)
 
-        end = time.time()
-        print(f'time: {(end-start)/60}minutes')
-        print(userID, repre_of_user)
+        # end = time.time()
+        # print(f'time: {(end-start)/60}minutes')
+        # print(userID, repre_of_user)
         article_id = Articles.objects.all().order_by(
-            '-time',)[:100].values_list('articleID', flat=True)
+            '-time',)[:10].values_list('articleID', flat=True)
         dic = {}
         dic['articleID'] = list(article_id)
         return JsonResponse(dic)
 
 #  đã ok , tim theo str trong form data
-    @action(detail=False)
+    @action(detail=False,methods=['post'])
     def search(self, request):
-        # data = request.data
-        # print(data)
-        # str1 = str(data['str'])
-        article_id = Articles.objects.filter(title__contains = "hôm").order_by(
+        data = request.data
+        str = data['str']
+        article_id = Articles.objects.filter(title__contains = str).order_by(
             '-time',)[:100].values_list('articleID', flat=True)
         dic = {}
         dic['articleID'] = list(article_id)
@@ -252,6 +273,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
+        # phan nay can them tang cho bang user_category them 1 va them biet time vao User_view
         obj = User_Category.objects.get(userID=1002722676)
         obj.count +=1
         obj.save()
