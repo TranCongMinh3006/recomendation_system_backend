@@ -144,12 +144,11 @@ class User_CategoryViewSet(viewsets.ModelViewSet):
     def post_user_category(self, request, *args, **kwargs):
         data = request.data
         userID = data['userID']
-        categoryIDs = data['categoryIDs']
+        categoryIDs = data['categoryIDs'].split(',')
         for x in categoryIDs:
-            print(x)
-        #     tmp = User.objects.get(categoryID = x , userID = userID)
-        #     tmp.count = 1
-        #     tmp.save()
+            tmp = User_Category.objects.get(categoryID = int(x) , userID = userID)
+            tmp.count = 1
+            tmp.save()
         dic ={}
         dic['status_post'] = "ok"
         return JsonResponse(dic)
@@ -180,13 +179,14 @@ class UsersViewSet(viewsets.ModelViewSet):
             categorys_list = Category.objects.all().values_list('categoryID', flat=True)
             uer_categorys_list = User_Category.objects.all().values_list('id', flat=True)
             maxID = max(uer_categorys_list)
-            for x in categorys_list:
+            for x in list(categorys_list):
                 obj = User_Category(id = maxID + 1,userID=userID,categoryID=x,count =0)
+                maxID +=1
                 obj.save()
             status = 0
         dic = {}
         dic['status'] = status
-        usersID = Users.objects.get(username = username)
+        # usersID = User.objects.get(username = username)
         dic['userID'] = userID
         dic['username'] = username
         return JsonResponse(dic)
@@ -238,6 +238,21 @@ class User_Comment_ViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(comments_by_articleID, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['post'])
+    def post_comment(self, request):
+        data = request.data
+        articleID = data['articleID']
+        userID = data['userID']
+        content = data['content']
+        time = datetime.datetime.now().timestamp()
+        lit = list(User_Comments.objects.all().values_list('commentID', flat=True))
+        id  = max(lst) + 1
+        tmp = User_Comments(commentID = id, articleID=articleID, userID=userID, content=content, time = time  )
+        tmp.save()
+        dic ={}
+        dic['status_post'] = "ok"
+        return JsonResponse(dic)
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
