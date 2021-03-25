@@ -37,12 +37,12 @@ import datetime
 #--------------------------------------------------------------------
 
 # time_now = int(datetime.datetime.now().timestamp())
-# cache_days = 200
+# cache_days = 3000
 # time_72h_before = time_now - 60 * 60 * 24 * cache_days
 
 # number_of_articles = 200
-# # # -----------------------------------------------------------------
-# # # chỗ này là các bài báo mới
+# # # # -----------------------------------------------------------------
+# # # # chỗ này là các bài báo mới
 # new_articles = Articles.objects.filter(time__gt=time_72h_before)[:number_of_articles]
 
 
@@ -91,6 +91,27 @@ import datetime
 
 
 # print(new_dic)
+
+# ----------------------------------------------------------
+# đây là chỗ load 1 dic article va category tuong ung
+# article_category_dict = {}
+
+# for x in new_articles.values_list('articleID', flat=True):
+#     category_id = Article_Category.objects.filter(
+#                 articleID=x).values_list('categoryID', flat=True)
+#     for i in category_id:
+#         tmp_categoryID = Category.objects.get(pk=i)
+#         if tmp_categoryID.level == 0:
+#             article_category_dict[x] = tmp_categoryID.categoryID
+# print(article_category_dict)
+# ---------------------------------------------------------------
+
+# user_category_count_dict={}
+
+
+# dic['articleID'] = list(article_id)
+
+
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -165,8 +186,9 @@ class UsersViewSet(viewsets.ModelViewSet):
             status = 0
         dic = {}
         dic['status'] = status
-        usersID = Users.objects.all().values_list('userId', flat=True)
-        dic['usersID'] = list(usersID)
+        usersID = Users.objects.get(username = username)
+        dic['userID'] = userID
+        dic['username'] = username
         return JsonResponse(dic)
 
 
@@ -260,6 +282,10 @@ class ArticleViewSet(viewsets.ModelViewSet):
     def get_personal_article(self, request):
         # data = request.data
         # userID = data['userID']
+        # user_category_tmp = User_Category.objects.filter(userID = userID)
+        # user_category_tmp = list(user_category_tmp)
+        # for x in user_category_tmp:
+        #     user_category_count_dict[x.category]=x.count
         # repre_of_user = Users.objects.get(userId = userID).representation
 
         # #them userId vao bang user neu chua co trong bang users

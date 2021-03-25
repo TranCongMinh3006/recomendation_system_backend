@@ -3,7 +3,7 @@ from rest_framework import routers
 from quickstart import views
 
 router = routers.DefaultRouter()
-# router.register(r'users', views.UserViewSet)
+router.register(r'users', views.UserViewSet)
 router.register(r'users_crawl', views.UsersViewSet)
 router.register(r'user_view', views.User_View_ViewSet)
 router.register(r'groups', views.GroupViewSet)
