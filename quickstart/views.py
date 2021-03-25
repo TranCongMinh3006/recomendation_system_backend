@@ -189,23 +189,14 @@ class CategoryViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(new_article, many=True)
         return Response(serializer.data)
 
-# hàm lấy tất cả các bài theo category
-#   đã ok nhưng thời gian chạy hơi lâu đặc biệt với các category với level cao như 0,
+# hàm lấy tất cả các bài theo category , ham nay da ok
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
-        article_category = Article_Category.objects.filter(
-            categoryID=instance.categoryID)[:20]
-        lst = []
-        for e in article_category:
-            article1 = Articles.objects.get(articleID=e.articleID)
-            lst.append(article1)
-        lst1 = []
-        for x in lst[:100]:  # trả về 100 bài báo theo category nhung chua phai la moi nhat
-            dic = {
-                'articleID': x.articleID,
-            }
-            lst1.append(dic)
-        return JsonResponse(lst1, safe=False)
+        article_id = Article_Category.objects.filter(
+            categoryID=instance.categoryID).values_list('articleID', flat=True)
+        dic = {}
+        dic['articleID'] = list(article_id)
+        return JsonResponse(dic)
 
 
 class ArticleViewSet(viewsets.ModelViewSet):
@@ -265,6 +256,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
             '-time',)[:100].values_list('articleID', flat=True)
         dic = {}
         dic['articleID'] = list(article_id)
+        # print(dic)
         return JsonResponse(dic)
 
 
@@ -273,10 +265,11 @@ class ArticleViewSet(viewsets.ModelViewSet):
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
+        print(request.data)
         # phan nay can them tang cho bang user_category them 1 va them biet time vao User_view
-        obj = User_Category.objects.get(userID=1002722676)
-        obj.count +=1
-        obj.save()
+        # obj = User_Category.objects.get(userID=1002722676)
+        # obj.count +=1
+        # obj.save()
 
         tag = Article_Tags.objects.filter(
             articleID=instance.articleID).values_list('tagID', flat=True)
