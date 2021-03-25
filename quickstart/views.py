@@ -278,8 +278,6 @@ class ArticleViewSet(viewsets.ModelViewSet):
         obj.count +=1
         obj.save()
 
-        comment = User_Comments.objects.filter(
-            articleID=instance.articleID).values_list('commentID', flat=True)
         tag = Article_Tags.objects.filter(
             articleID=instance.articleID).values_list('tagID', flat=True)
         dic = {
@@ -297,7 +295,6 @@ class ArticleViewSet(viewsets.ModelViewSet):
             'click_counter': instance.click_counter,
             'hot_score': instance.hot_score
         }
-        dic['comments'] = list(comment)
         dic['tags'] = list(tag)
         return JsonResponse(dic)
 
