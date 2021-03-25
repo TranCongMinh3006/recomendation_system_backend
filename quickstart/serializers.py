@@ -1,6 +1,6 @@
 from django.contrib.auth.models import User, Group
 from django.db.models import fields
-from . models import Article_Category, Article_Tags, Articles, Category, Tags, User_Comments, User_View, Users
+from . models import Article_Category, Article_Tags, Articles, Category, Tags, User_Comments, User_View, Users,User_Category
 from rest_framework import serializers
 
 
@@ -55,3 +55,8 @@ class ArticlesSerializer(serializers.HyperlinkedModelSerializer):
     class Meta:
         model = Articles
         fields = ['articleID', 'representation', 'link', 'category', 'displayContent', 'content','time', 'title', 'tags', 'sapo', 'thumbnail', 'click_counter','hot_score']
+
+class User_CategorySerializer(serializers.HyperlinkedModelSerializer):
+    class Meta:
+        model = User_Category
+        fields = ['id','userID','categoryID','count']

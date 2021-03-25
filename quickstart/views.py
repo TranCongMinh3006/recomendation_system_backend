@@ -2,7 +2,7 @@ from django.contrib.auth.models import User, Group
 from . models import Article_Category, Article_Tags, Articles, Category, Tags, User_Comments, User_View, Users, User_Category
 from rest_framework import viewsets
 from rest_framework import permissions
-from quickstart.serializers import Article_CategorySerializer, Article_TagsSerializer, ArticlesSerializer, CategorySerializer, UserSerializer, GroupSerializer, TagSerializer, User_CommentSerializer, User_ViewSerializer, UsersSerializer
+from quickstart.serializers import Article_CategorySerializer, Article_TagsSerializer, ArticlesSerializer, CategorySerializer, UserSerializer, GroupSerializer, TagSerializer, User_CommentSerializer, User_ViewSerializer, UsersSerializer,User_CategorySerializer
 from django.shortcuts import get_object_or_404
 from rest_framework.decorators import action
 import json
@@ -111,6 +111,29 @@ class GroupViewSet(viewsets.ModelViewSet):
     serializer_class = GroupSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+class User_CategoryViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint that allows groups to be viewed or edited.
+    """
+    queryset = User_Category.objects.all()
+    serializer_class = User_CategorySerializer
+    # permission_classes = [permissions.IsAuthenticated]
+
+    @action(detail=False, methods=['post'])
+    def post_user_category(self, request, *args, **kwargs):
+        data = request.data
+        userID = data['userID']
+        categoryIDs = data['categoryIDs']
+        for x in categoryIDs:
+            print(x)
+        #     tmp = User.objects.get(categoryID = x , userID = userID)
+        #     tmp.count = 1
+        #     tmp.save()
+        dic ={}
+        dic['status_post'] = "ok"
+        return JsonResponse(dic)
+
+
 
 class UsersViewSet(viewsets.ModelViewSet):
     """
@@ -118,7 +141,33 @@ class UsersViewSet(viewsets.ModelViewSet):
     """
     queryset = Users.objects.all()
     serializer_class = UsersSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    # permission_classes = [permissions.IsAuthenticated]
+
+    @action(detail=False, methods=['post'])
+    def get_userID_and_status(self, request, *args, **kwargs):
+        data = request.data
+        username = data['username']
+        userID = User.objects.get(username=username).id
+
+        check_user_exist = Users.objects.filter(
+            userId=userID).count()
+
+        status = 1
+        if check_user_exist == 0:
+            new_user = Users(userId=userID, representation = "day la represen")
+            new_user.save()
+            categorys_list = Category.objects.all().values_list('categoryID', flat=True)
+            uer_categorys_list = User_Category.objects.all().values_list('id', flat=True)
+            maxID = max(uer_categorys_list)
+            for x in categorys_list:
+                obj = User_Category(id = maxID + 1,userID=userID,categoryID=x,count =0)
+                obj.save()
+            status = 0
+        dic = {}
+        dic['status'] = status
+        usersID = Users.objects.all().values_list('userId', flat=True)
+        dic['usersID'] = list(usersID)
+        return JsonResponse(dic)
 
 
 class User_View_ViewSet(viewsets.ModelViewSet):
@@ -218,10 +267,11 @@ class ArticleViewSet(viewsets.ModelViewSet):
         # if check_user_exist == 0:
         #     new_user = Users.objects.create(userId = userID, representation = "day la represen cua user id = -1")
         #     new_user.save()
-        if request.method == 'POST':
-            data = request.data
-            userID = data['userID']
-            print(userID)
+
+        # if request.method == 'POST':
+        #     data = request.data
+        #     userID = data['userID']
+        #     print(userID)
 
         # load input article_rep for score
         # multiple_inputs_newsEncoder = []
@@ -354,10 +404,3 @@ class Article_CategoryViewSet(viewsets.ModelViewSet):
 
 # update_representation_of_articles(articles_represent)
 
-# from django.http import HttpResponse
-# import datetime
-
-# def get_personal_article(request):
-#     now = datetime.datetime.now()
-#     html = "<html><body>It is now %s.</body></html>" % now
-#     return HttpResponse(html)
