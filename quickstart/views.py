@@ -12,45 +12,77 @@ import datetime
 
 #----------------------------------------------------------------
 
-# import pickle
-# import numpy as np 
-# import pandas as pd
-# import keras
-# from keras.layers import *
-# from keras.models import Model
-# from keras import backend as K
-# import tensorflow as tf
+# thuytt load all class
+import operator
+import time
+import pickle
+import numpy as np 
+import pandas as pd
+import keras
+from keras.layers import *
+from keras.models import Model
+from keras import backend as K
+import tensorflow as tf
 
-# class Multiple_Score:
-#     def __init__(self, number_articles):
-#         user_rep = Input(shape=(768,), dtype='float32')
-#         candidates = [Input(shape=(768,), dtype='float32') for _ in range(number_articles)]
-#         logits = [keras.layers.dot([user_rep, candidate_vec], axes=-1) for candidate_vec in candidates]
-#         logits = keras.layers.Activation(keras.activations.sigmoid)(keras.layers.concatenate(logits))
-#         inputs_tt = candidates + [user_rep]
-#         self.Score = Model(candidates+[user_rep], logits)
-# number_articles = 200#len(all_articles_represent)
-# multiScore_model = Multiple_Score(number_articles)
-# print(multiScore_model)
+# load models and file pkl
+file = open('./resources/phobert_embed_mat.pkl', 'rb')
+embedding_mat = pickle.load(file)
+file.close()
+
+userEmbedd = keras.models.load_model('./resources/user_embedd_model')
+print(userEmbedd)
+
+
+# number articles save cache
+number_of_articles = 200
+print(f'number of articles in cache: {number_of_articles}')
+
+class Multiple_Score:
+    def __init__(self, number_articles):
+        print('Initialize Multiple_Score_Model\n')
+        user_rep = Input(shape=(768,), dtype='float32')
+        candidates = [Input(shape=(768,), dtype='float32') for _ in range(number_articles)]
+        logits = [keras.layers.dot([user_rep, candidate_vec], axes=-1) for candidate_vec in candidates]
+        logits = keras.layers.Activation(keras.activations.sigmoid)(keras.layers.concatenate(logits))
+        inputs_tt = candidates + [user_rep]
+        self.Score = Model(candidates+[user_rep], logits)
+
+multiScore_model = Multiple_Score(number_of_articles)
+
+class NewsEncoder:
+    def __init__(self, embedding_mat):
+        print('Initialize NewsEncoder_Model\n')
+        self.__embedding_dim = embedding_mat.shape[1]
+        
+        userid_dense_input = Input(shape=(200,), dtype='float32')
+        news_cnn_input = Input(shape=(30,768,), dtype='float32')
+        attention_a = Dot((2, 1))([news_cnn_input, Dense(self.__embedding_dim, activation='tanh')(userid_dense_input)])
+        attention_weight = Activation('softmax')(attention_a)
+        news_rep = keras.layers.Dot((1, 1))([news_cnn_input, attention_weight])
+        self.news_encoder = Model([userid_dense_input, news_cnn_input], news_rep)
+
+newsEncoder = NewsEncoder(embedding_mat)
 #----------------------------------------------------------------
 
 #--------------------------------------------------------------------
 
-# time_now = int(datetime.datetime.now().timestamp())
-# cache_days = 3000
-# time_72h_before = time_now - 60 * 60 * 24 * cache_days
+time_now = int(datetime.datetime.now().timestamp())
+cache_days = 10000
+time_72h_before = time_now - 60 * 60 * 24 * cache_days
 
-# number_of_articles = 200
-# # # # -----------------------------------------------------------------
-# # # # chỗ này là các bài báo mới
-# new_articles = Articles.objects.filter(time__gt=time_72h_before)[:number_of_articles]
+# # # -----------------------------------------------------------------
+# # # chỗ này là các bài báo mới
+new_articles = Articles.objects.filter(time__gt=time_72h_before)[:number_of_articles]
 
 
 # # # ----------------------------------------------------------------
 # # # chỗ này là các bài báo hot
+# print('Load hot articles......................')
 # hot_article_in72h = Articles.objects.filter(
 #     time__gt=time_72h_before)
+# print('finish hot filers')
 # hot_article_in72h_id = hot_article_in72h.values_list('articleID', flat=True)
+# print(len(hot_article_in72h_id))
 # for i in list(hot_article_in72h_id):
 #     tmp = Articles.objects.get(pk=i)
 #     click_score = tmp.click_counter
@@ -66,44 +98,49 @@ import datetime
 #     tmp.save()
 
 # hot_articles = Articles.objects.all().order_by('-hot_score',)[:number_of_articles]
-
+# print('Done load hot news')
 # ------------------------------------------------
 # chỗ này là các bài báo được load lên theo dạng aritcleId : representation sau khi runserver
-# all_articles_represent ={}
-# news = Articles.objects.all()[:200]
-# list_of_articleId = news.values_list('articleID', flat=True)
-# for x in list_of_articleId:
-#     all_articles_represent[x] = Articles.objects.get(pk=x).representation
+print('Load represent articles.............')
+all_articles_represent ={}
+# news = new_articles[:100]
+# print(news)
+# print('news:..............', news.count())
+list_of_articleId = new_articles.values_list('articleID', flat=True)
+print('listofArticleId:..............')
+for x in list_of_articleId:
+    print('load article represent', x)
+    all_articles_represent[x] = Articles.objects.get(pk=x).representation
 
-# test =all_articles_represent[x] 
-# print(type(test))
-# print(test)
-# def convert_article_rep():
-#     all_articles_represent_convert = dict()
-#     for articleID in all_articles_represent:
-#         represent = all_articles_represent[articleID]
-#         represent_reconvert = np.frombuffer(represent, dtype='float32').reshape(1,30,768)
-#         all_articles_represent_convert[articleID] = represent_reconvert
-#     return all_articles_represent_convert
-
-# all_articles_represent_convert = convert_article_rep(all_articles_represent)
-# print('conver oke:', len(all_articles_represent_convert))
-
+# reconvert articles represent CNNoutput
+def convert_article_rep(all_articles_represent):
+    all_articles_represent_convert = dict()
+    for articleID in all_articles_represent:
+        represent = all_articles_represent[articleID]
+        represent = json.loads(represent)
+        represent_reconvert = np.array(represent, dtype='float32').reshape(1,30,768) # reshape list to np.array
+        all_articles_represent_convert[articleID] = represent_reconvert
+    return all_articles_represent_convert
+print('run function convert_article_rep')
+all_articles_represent_convert = convert_article_rep(all_articles_represent)
+print('convert oke:', len(all_articles_represent_convert))
+print('Done load articles rep')
 
 # print(new_dic)
 
 # ----------------------------------------------------------
 # đây là chỗ load 1 dic article va category tuong ung
-# article_category_dict = {}
+article_category_dict = {}
 
-# for x in new_articles.values_list('articleID', flat=True):
-#     category_id = Article_Category.objects.filter(
-#                 articleID=x).values_list('categoryID', flat=True)
-#     for i in category_id:
-#         tmp_categoryID = Category.objects.get(pk=i)
-#         if tmp_categoryID.level == 0:
-#             article_category_dict[x] = tmp_categoryID.categoryID
-# print(article_category_dict)
+for x in new_articles.values_list('articleID', flat=True):
+    category_id = Article_Category.objects.filter(
+                articleID=x).values_list('categoryID', flat=True)
+    for cateID in category_id:
+        tmp_categoryID = Category.objects.get(pk=cateID)
+        if tmp_categoryID.level == 0:
+            article_category_dict[cateID] = tmp_categoryID.categoryID
+
+print('article cate:',len(article_category_dict))
 # ---------------------------------------------------------------
 
 # user_category_count_dict={}
@@ -121,8 +158,6 @@ class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().order_by('-date_joined')
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
-
-
 
 class GroupViewSet(viewsets.ModelViewSet):
     """
@@ -154,7 +189,6 @@ class User_CategoryViewSet(viewsets.ModelViewSet):
         return JsonResponse(dic)
 
 
-
 class UsersViewSet(viewsets.ModelViewSet):
     """
     API endpoint that allows groups to be viewed or edited.
@@ -163,6 +197,7 @@ class UsersViewSet(viewsets.ModelViewSet):
     serializer_class = UsersSerializer
     # permission_classes = [permissions.IsAuthenticated]
 
+#get_userID_and_status
     @action(detail=False, methods=['post'])
     def get_userID_and_status(self, request, *args, **kwargs):
         data = request.data
@@ -190,6 +225,7 @@ class UsersViewSet(viewsets.ModelViewSet):
         # usersID = User.objects.get(username = username)
         dic['userID'] = userID
         dic['username'] = username
+        print('User view set:'. dic)
         return JsonResponse(dic)
 
 
@@ -296,47 +332,127 @@ class ArticleViewSet(viewsets.ModelViewSet):
 
     @action(detail=False,methods=['post'])
     def get_personal_article(self, request):
-        # data = request.data
-        # userID = data['userID']
-        # user_category_tmp = User_Category.objects.filter(userID = userID)
-        # user_category_tmp = list(user_category_tmp)
-        # for x in user_category_tmp:
-        #     user_category_count_dict[x.category]=x.count
-        # repre_of_user = Users.objects.get(userId = userID).representation
+        start = time.time()
+        data = request.data
+        print(data)
+        userID = data['id']
+        print('userID from frontend:', userID)
+        user_rep = Users.objects.get(userId = userID).representation
+        user_rep = json.loads(user_rep) # do loi
+        user_rep_convert = np.array(user_rep, dtype='float32').reshape(1,768)
+        print(user_rep_convert.shape)
 
-        # #them userId vao bang user neu chua co trong bang users
-        # check_user_exist = Users.objects.filter(userId = userID).count() 
-        # if check_user_exist == 0:
-        #     new_user = Users.objects.create(userId = userID, representation = "day la represen cua user id = -1")
-        #     new_user.save()
-
-        # if request.method == 'POST':
-        #     data = request.data
-        #     userID = data['userID']
-        #     print(userID)
+        # --------------------
+        # day la cho load 1 dic category va count tuong ung voi user
+        user_category_tmp = User_Category.objects.filter(userID = userID)
+        user_category_tmp = list(user_category_tmp)
+        for x in user_category_tmp:
+            user_category_count_dict[x.category]=x.count
+        # -------------------------------------------
+        # load candiate (ở cache), prepare var data
+        sample_candidate = list(all_articles_represent_convert)
+        
+        userid = np.array([userID], dtype='uint64')
+        userid_embedd = userEmbedd.predict(userid)
 
         # load input article_rep for score
-        # multiple_inputs_newsEncoder = []
-        # for articleID in sample_candidate:
-        #     article_represent = np.array(all_articles_represent_convert[articleID])
-        #     input_newsEncoder = [userid_embedd, article_represent]
-        #     candidate_rep = newsEncoder.news_encoder.predict(input_newsEncoder)
-        #     multiple_inputs_newsEncoder.append(candidate_rep)
-        # print(len(multiple_inputs_newsEncoder))
+        multiple_inputs_newsEncoder = []
+        for articleID in sample_candidate:
+            article_represent = np.array(all_articles_represent_convert[articleID])
+            input_newsEncoder = [userid_embedd, article_represent]
+            candidate_rep = newsEncoder.news_encoder.predict(input_newsEncoder)
+            multiple_inputs_newsEncoder.append(candidate_rep)
+        print(len(multiple_inputs_newsEncoder))
 
-        # user_vector = userVector_dict[user]
-        # newsEncoder_sample = multiple_inputs_newsEncoder
-        # traingen = newsEncoder_sample + [user_vector]
-        # print(len(traingen))
-        # all_score = multiScore_model.Score.predict(traingen)
+        user_vector = user_rep_convert
+        newsEncoder_sample = multiple_inputs_newsEncoder
+        traingen = newsEncoder_sample + [user_vector]
+        print(len(traingen))
+        all_score = multiScore_model.Score.predict(traingen)
 
-        # end = time.time()
-        # print(f'time: {(end-start)/60}minutes')
-        # print(userID, repre_of_user)
-        article_id = Articles.objects.all().order_by(
-            '-time',)[:10].values_list('articleID', flat=True)
+        end = time.time()
+        print(f'time: {(end-start)/60}s')
+        
+        # return score sort articleID
+        print('all_score',all_score.shape)
+        score_dict = dict()
+        for idx, articleID in enumerate(sample_candidate):
+            score_dict[articleID] = all_score[0][idx]
+        score_sort_dict = dict( sorted(score_dict.items(), key=operator.itemgetter(1),reverse=True))
+        # print(score_sort_dict)
+
+        # fake data count for category
+        user_category_count_dict={
+            "1": 2,
+            "2": 3,
+            "3": 5
+        }
+
+        #--------------------------------------------------------------------
+        # đây là hàm để sampling data
+        print('Day la sampling data------------------------------')
+        start = time.time()
+        NUMBER_OF_ARTICLES = 50
+        def get_homepage_articles(data_dict, user_dict):
+            #Get articles categories id
+            user =  [[int(key), user_dict[key]] for key in user_dict]
+            user_category = [category[0] for category in user] 
+            # Check probability
+            user.insert(0, [0, 0]) 
+            user_category_df = pd.DataFrame(user, columns=['categoryID', 'count'])
+            user_category_df['prob'] = 0.0
+            def cal_prob():
+                sum = 0
+                for category_score in user_category_df['count']:
+                    sum += category_score
+                sum_prob = 0
+                for index, row in user_category_df.iterrows():
+                    prob = row['count']/sum
+                    sum_prob += prob
+                    user_category_df.at[index, 'prob'] = sum_prob
+            cal_prob()   
+            article_list =  [[key, data_dict[key]] for key in data_dict]
+            articles_df = pd.DataFrame(article_list, columns = ['articleID', 'category'])
+            in_category_df = pd.DataFrame(columns = ['articleID'])
+
+            #Divide articles into two lists    
+            in_category_list = []
+            out_category_list = []
+            for index, row in articles_df.iterrows():
+                if row['category'] in user_category:
+                    in_category_df = in_category_df.append(articles_df.loc[index])
+                else:
+                    out_category_list.append(articles_df.loc[index]['articleID'])
+            run_out_of_article = True
+            for j in range(NUMBER_OF_ARTICLES):
+                magic = random.random()
+                for i in range(len(user_category_df.index) - 1):
+                    if user_category_df.iloc[i]['prob'] <= magic and magic <= user_category_df.iloc[i+1]['prob']:
+                        id = int(user_category_df.iloc[i+1]['categoryID'])
+                        for index, row in in_category_df.iterrows():
+                            if id == row['category']:
+                                in_category_list.append(row['articleID'])
+                                in_category_df = in_category_df.drop(index = index)
+                                run_out_of_article = False
+                                break
+                        if run_out_of_article:
+                            user_category_df.at[i, 'count'] = 0
+                            cal_prob()
+                        run_out_of_article = True
+                if len(in_category_df.index) == 0:
+                    return in_category_list + out_category_list
+            return in_category_list + out_category_list
+        
+        articles_list_return = (get_homepage_articles(article_category_dict, user_category_count_dict))
+        articles_list_return = [int(x) for x in articles_list_return]
+        print(articles_list_return[0:10])
+        print(type(articles_list_return[0]))
+        end = time.time()
+        print(f'Time run sampling MinhMoc: {(end-start)}s', )
+        
+        # CongMinh code return format for frontend
         dic = {}
-        dic['articleID'] = list(article_id)
+        dic['articleID'] = list(articles_list_return)
         return JsonResponse(dic)
 
 #  đã ok , tim theo str trong form data
@@ -431,18 +547,24 @@ class Article_CategoryViewSet(viewsets.ModelViewSet):
 
 
 
-# đã ok 
+'''
+Import user_representation into User table in mysql
+# only use one time
+'''
 # import pickle
-
-# file = open('resources/articles_rep_10k.pkl', 'rb')
-# articles_represent = pickle.load(file)
+# import json
+# file = open('resources/userVector_dict_json.pkl', 'rb')
+# users_represent = pickle.load(file)
 # file.close()
 
-# def update_representation_of_articles(dict):
-#     for idx, x in enumerate(dict):
-#             tmp = Articles.objects.get(pk = x)
-#             tmp.representation = dict[x]
+# def update_representation_of_users(user_dict):
+#     print('update representation of users:\n-----------------------')
+#     for idx, uid in enumerate(user_dict):
+#         # if(idx<2):
+#             user_obj = Users.objects.create(pk = uid)
+#             print(user_obj)
+#             tmp.representation = user_dict[uid]
 #             tmp.save()
 
-# update_representation_of_articles(articles_represent)
+# update_representation_of_users(users_represent)
 
