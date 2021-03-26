@@ -174,7 +174,8 @@ class UsersViewSet(viewsets.ModelViewSet):
 
         status = 1
         if check_user_exist == 0:
-            new_user = Users(userId=userID, representation = "day la represen")
+            init_user = Users.objects.get(pk = -1)
+            new_user = Users(userId=userID, representation = init_user.representation)
             new_user.save()
             categorys_list = Category.objects.all().values_list('categoryID', flat=True)
             uer_categorys_list = User_Category.objects.all().values_list('id', flat=True)
