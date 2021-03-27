@@ -14,6 +14,7 @@ import datetime
 
 # thuytt load all class
 import operator
+import random
 import time
 import pickle
 import numpy as np 
@@ -29,12 +30,25 @@ file = open('./resources/phobert_embed_mat.pkl', 'rb')
 embedding_mat = pickle.load(file)
 file.close()
 
+# load userid_dict
+file = open('./resources/userid_dict.pkl', 'rb')
+userid_dict = pickle.load(file)
+file.close()
+
 userEmbedd = keras.models.load_model('./resources/user_embedd_model')
 print(userEmbedd)
 
 
+
+# userID = 1063372939
+# userid = np.array([userID], dtype='uint64')
+# print(userid.shape)
+# print(userid)
+# userEmbedd.predict(userid)
+
+
 # number articles save cache
-number_of_articles = 200
+number_of_articles = 10
 print(f'number of articles in cache: {number_of_articles}')
 
 class Multiple_Score:
@@ -67,16 +81,17 @@ newsEncoder = NewsEncoder(embedding_mat)
 #--------------------------------------------------------------------
 
 time_now = int(datetime.datetime.now().timestamp())
-cache_days = 10000
+cache_days = 4
 time_72h_before = time_now - 60 * 60 * 24 * cache_days
 
 # # # -----------------------------------------------------------------
 # # # chỗ này là các bài báo mới
 new_articles = Articles.objects.filter(time__gt=time_72h_before)[:number_of_articles]
+print(len(new_articles))
 
 
 # # # ----------------------------------------------------------------
-# # # chỗ này là các bài báo hot
+# # chỗ này là các bài báo hot
 # print('Load hot articles......................')
 # hot_article_in72h = Articles.objects.filter(
 #     time__gt=time_72h_before)
@@ -97,7 +112,7 @@ new_articles = Articles.objects.filter(time__gt=time_72h_before)[:number_of_arti
 #     tmp.hot_score = hot_score
 #     tmp.save()
 
-# hot_articles = Articles.objects.all().order_by('-hot_score',)[:number_of_articles]
+# hot_articles = Articles.objects.filter(time__gt=time_72h_before).order_by('-hot_score',)[:number_of_articles]
 # print('Done load hot news')
 # ------------------------------------------------
 # chỗ này là các bài báo được load lên theo dạng aritcleId : representation sau khi runserver
@@ -138,12 +153,12 @@ for x in new_articles.values_list('articleID', flat=True):
     for cateID in category_id:
         tmp_categoryID = Category.objects.get(pk=cateID)
         if tmp_categoryID.level == 0:
-            article_category_dict[cateID] = tmp_categoryID.categoryID
+            article_category_dict[x] = tmp_categoryID.categoryID # sửa lỗi cho Minh, phải dạng articleID - categoryID
 
-print('article cate:',len(article_category_dict))
+print('article cate:',len(article_category_dict), article_category_dict)
 # ---------------------------------------------------------------
 
-# user_category_count_dict={}
+user_category_count_dict= dict()
 
 
 # dic['articleID'] = list(article_id)
@@ -208,24 +223,27 @@ class UsersViewSet(viewsets.ModelViewSet):
             userId=userID).count()
 
         status = 1
-        if check_user_exist == 0:
+        if check_user_exist == 0:   
             init_user = Users.objects.get(pk = -1)
             new_user = Users(userId=userID, representation = init_user.representation)
             new_user.save()
             categorys_list = Category.objects.all().values_list('categoryID', flat=True)
             uer_categorys_list = User_Category.objects.all().values_list('id', flat=True)
-            maxID = max(uer_categorys_list)
+            number_user_category_records = len(uer_categorys_list)
+            if number_user_category_records ==0:
+                maxID = 0
+            else:
+                maxID = max(uer_categorys_list)
             for x in list(categorys_list):
                 obj = User_Category(id = maxID + 1,userID=userID,categoryID=x,count =0)
                 maxID +=1
-                obj.save()
+                obj.save()  
             status = 0
         dic = {}
         dic['status'] = status
         # usersID = User.objects.get(username = username)
         dic['userID'] = userID
         dic['username'] = username
-        print('User view set:'. dic)
         return JsonResponse(dic)
 
 
@@ -344,21 +362,28 @@ class ArticleViewSet(viewsets.ModelViewSet):
 
         # --------------------
         # day la cho load 1 dic category va count tuong ung voi user
-        user_category_tmp = User_Category.objects.filter(userID = userID)
+        user_category_tmp = User_Category.objects.filter(userID = userID).values_list('id', flat=True)
         user_category_tmp = list(user_category_tmp)
+        print('user_category is here')
         for x in user_category_tmp:
-            user_category_count_dict[x.category]=x.count
+            tmp = User_Category.objects.get(pk=x)
+            print('for user_category_tmp', x)
+            user_category_count_dict[tmp.categoryID]=tmp.count
         # -------------------------------------------
         # load candiate (ở cache), prepare var data
         sample_candidate = list(all_articles_represent_convert)
         
-        userid = np.array([userID], dtype='uint64')
+        userid = np.array([12], dtype='uint64') # fake data con bi loi 
+        print(userid.shape)
         userid_embedd = userEmbedd.predict(userid)
+        print(userid_embedd)
 
         # load input article_rep for score
         multiple_inputs_newsEncoder = []
         for articleID in sample_candidate:
+            print('load input rep:', articleID)
             article_represent = np.array(all_articles_represent_convert[articleID])
+            print('article convert:', article_represent.shape)
             input_newsEncoder = [userid_embedd, article_represent]
             candidate_rep = newsEncoder.news_encoder.predict(input_newsEncoder)
             multiple_inputs_newsEncoder.append(candidate_rep)
@@ -382,11 +407,11 @@ class ArticleViewSet(viewsets.ModelViewSet):
         # print(score_sort_dict)
 
         # fake data count for category
-        user_category_count_dict={
-            "1": 2,
-            "2": 3,
-            "3": 5
-        }
+        # user_category_count_dict={
+        #     "1": 2,
+        #     "2": 3,
+        #     "3": 5
+        # }
 
         #--------------------------------------------------------------------
         # đây là hàm để sampling data

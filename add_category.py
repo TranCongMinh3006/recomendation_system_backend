@@ -1,3 +1,6 @@
+'''
+file này để add category lv0 vào trường category của bảng article
+'''
 import mysql.connector
 from sys import stdout
 conn = mysql.connector.connect(
