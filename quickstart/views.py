@@ -15,6 +15,7 @@ import datetime
 # thuytt load all class
 import operator
 import random
+from sys import stdout
 import time
 import pickle
 import numpy as np 
@@ -43,25 +44,24 @@ print(userEmbedd)
 #--------------------------------------------------------------------
 # define cache_days
 time_now = int(datetime.datetime.now().timestamp())
-cache_days = 4
+cache_days = 10
 time_72h_before = time_now - 60 * 60 * 24 * cache_days
 
 # number articles save cache
-number_of_articles = 10
+number_of_articles = 2000
 print(f'number of articles in cache: {number_of_articles}')
 
 # # # -----------------------------------------------------------------
 # # # chỗ này là các bài báo mới
 print('begin load time 72h')
 new_articles = Articles.objects.filter(time__gt=time_72h_before)[:number_of_articles]
-print(len(new_articles))
-print(len(new_articles))
-# new_articles = new_articles[:number_of_articles]
-print(type(new_articles))
+print(f'leng new_articles 72h: {len(new_articles)}')
 
-# number_of_articles = min(number_of_articles, len(new_articles))
+number_of_articles = min(number_of_articles, len(new_articles))
 
 
+#-----------------------------------------------------------------------
+# load thuytt Model
 class Multiple_Score:
     def __init__(self, number_articles):
         print('Initialize Multiple_Score_Model\n')
@@ -91,11 +91,11 @@ newsEncoder = NewsEncoder(embedding_mat)
 
 
 # # # ----------------------------------------------------------------
-# # chỗ này là các bài báo hot
+# # chỗ này là các hot articles
 print('Load hot articles......................')
 hot_article_in72h = Articles.objects.filter(
     time__gt=time_72h_before)
-print('finish hot filers')
+print('finish hot filters')
 hot_article_in72h_id = hot_article_in72h.values_list('articleID', flat=True)
 print(len(hot_article_in72h_id))
 for i in list(hot_article_in72h_id):
@@ -114,17 +114,16 @@ for i in list(hot_article_in72h_id):
 
 hot_articles = Articles.objects.filter(time__gt=time_72h_before).order_by('-hot_score',)[:number_of_articles]
 print('Done load hot news', len(hot_articles))
+
 # ------------------------------------------------
 # chỗ này là các bài báo được load lên theo dạng aritcleId : representation sau khi runserver
 print('Load represent articles.............')
 all_articles_represent ={}
-# news = new_articles[:100]
-# print(news)
-# print('news:..............', news.count())
 list_of_articleId = new_articles.values_list('articleID', flat=True)
 print('listofArticleId:..............')
-for x in list_of_articleId:
-    print('load article represent', x)
+for idx, x in enumerate(list_of_articleId):
+    stdout.write("\rload articles represent %d !" % x)
+    stdout.flush()
     all_articles_represent[x] = Articles.objects.get(pk=x).representation
 
 # reconvert articles represent CNNoutput
@@ -155,15 +154,9 @@ for x in new_articles.values_list('articleID', flat=True):
         if tmp_categoryID.level == 0:
             article_category_dict[x] = tmp_categoryID.categoryID # sửa lỗi cho Minh, phải dạng articleID - categoryID
 
-print('article-cate:',len(article_category_dict), article_category_dict)
+print('article-cate:',len(article_category_dict))
 # ---------------------------------------------------------------
-
 user_category_count_dict= dict()
-
-
-# dic['articleID'] = list(article_id)
-
-
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -353,6 +346,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
 
     @action(detail=False,methods=['post'])
     def get_personal_article(self, request):
+        all_time = time.time()
         start = time.time()
         data = request.data
         print(data)
@@ -375,7 +369,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
             user_category_count_dict[tmp.categoryID]=tmp.count
         
         # -------------------------------------------------------------------
-        # load candiate (ở cache), prepare var data
+        # load candiate (ở cache), prepare variable data
         sample_candidate = list(all_articles_represent_convert)
         
         userid = userID # userid user for train model
@@ -387,7 +381,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
         print(userid_embedd)
 
         # load input article_rep for score
-        multiple_inputs_newsEncoder = []
+        multiple_inputs_newsEncoder = [] # need to load in memory
         for articleID in sample_candidate:
             print('load input rep:', articleID)
             article_represent = np.array(all_articles_represent_convert[articleID])
@@ -415,11 +409,11 @@ class ArticleViewSet(viewsets.ModelViewSet):
         # print(score_sort_dict)
 
         # fake data count for category
-        # user_category_count_dict={
-        #     "1": 2,
-        #     "2": 3,
-        #     "3": 5
-        # }
+        user_category_count_dict={
+            "1": 2,
+            "2": 3,
+            "3": 5
+        }
 
         #--------------------------------------------------------------------
         # đây là hàm để sampling data
@@ -486,6 +480,10 @@ class ArticleViewSet(viewsets.ModelViewSet):
         # CongMinh code return format for frontend
         dic = {}
         dic['articleID'] = list(articles_list_return)
+
+        # get time all
+        all_time = time.time()- all_time
+        print(f'time all for handle personalize articles {all_time} second')
         return JsonResponse(dic)
 
 #search  đã ok , tim theo str trong form data
