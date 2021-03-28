@@ -8,19 +8,24 @@ from keras.layers import *
 from keras.models import Model
 from keras import backend as K
 import tensorflow as tf
+import os
 
-userEmbedd = keras.models.load_model('./resources/user_embedd_model')
+# os.environ["CUDA_VISIBLE_DEVICES"]="0"
+userEmbedd = keras.models.load_model('./resources/user_embedd_model1')
 print(userEmbedd)
+# print(userEmbedd.summary())
 file = open('./resources/userid_dict.pkl', 'rb')
 userid_dict = pickle.load(file)
 file.close()
 
 
-userID = 1063372939
+userID = 1003507211
 # userID = 4977
 # if userID not in userid_dict:
 #     userid_dict[]
-userid = np.array([userID], dtype='uint64')
+userid = userid_dict[1003507211]
+userid = np.array([userid], dtype='uint64')
 print(userid.shape)
-print(userid)
-userEmbedd.predict(userid)
+# print(userid)
+predictor = userEmbedd.predict(userid)
+print(predictor.shape, predictor)

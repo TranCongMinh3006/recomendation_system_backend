@@ -40,16 +40,27 @@ print(userEmbedd)
 
 
 
-# userID = 1063372939
-# userid = np.array([userID], dtype='uint64')
-# print(userid.shape)
-# print(userid)
-# userEmbedd.predict(userid)
-
+#--------------------------------------------------------------------
+# define cache_days
+time_now = int(datetime.datetime.now().timestamp())
+cache_days = 4
+time_72h_before = time_now - 60 * 60 * 24 * cache_days
 
 # number articles save cache
 number_of_articles = 10
 print(f'number of articles in cache: {number_of_articles}')
+
+# # # -----------------------------------------------------------------
+# # # chỗ này là các bài báo mới
+print('begin load time 72h')
+new_articles = Articles.objects.filter(time__gt=time_72h_before)[:number_of_articles]
+print(len(new_articles))
+print(len(new_articles))
+# new_articles = new_articles[:number_of_articles]
+print(type(new_articles))
+
+# number_of_articles = min(number_of_articles, len(new_articles))
+
 
 class Multiple_Score:
     def __init__(self, number_articles):
@@ -78,42 +89,31 @@ class NewsEncoder:
 newsEncoder = NewsEncoder(embedding_mat)
 #----------------------------------------------------------------
 
-#--------------------------------------------------------------------
-
-time_now = int(datetime.datetime.now().timestamp())
-cache_days = 4
-time_72h_before = time_now - 60 * 60 * 24 * cache_days
-
-# # # -----------------------------------------------------------------
-# # # chỗ này là các bài báo mới
-new_articles = Articles.objects.filter(time__gt=time_72h_before)[:number_of_articles]
-print(len(new_articles))
-
 
 # # # ----------------------------------------------------------------
 # # chỗ này là các bài báo hot
-# print('Load hot articles......................')
-# hot_article_in72h = Articles.objects.filter(
-#     time__gt=time_72h_before)
-# print('finish hot filers')
-# hot_article_in72h_id = hot_article_in72h.values_list('articleID', flat=True)
-# print(len(hot_article_in72h_id))
-# for i in list(hot_article_in72h_id):
-#     tmp = Articles.objects.get(pk=i)
-#     click_score = tmp.click_counter
-#     ID = tmp.articleID
-#     number_of_comments = User_Comments.objects.filter(
-#         articleID=ID).count()
+print('Load hot articles......................')
+hot_article_in72h = Articles.objects.filter(
+    time__gt=time_72h_before)
+print('finish hot filers')
+hot_article_in72h_id = hot_article_in72h.values_list('articleID', flat=True)
+print(len(hot_article_in72h_id))
+for i in list(hot_article_in72h_id):
+    tmp = Articles.objects.get(pk=i)
+    click_score = tmp.click_counter
+    ID = tmp.articleID
+    number_of_comments = User_Comments.objects.filter(
+        articleID=ID).count()
 
-#     if click_score is not None:
-#         hot_score = number_of_comments*9 + click_score
-#     else:
-#         hot_score = number_of_comments*10
-#     tmp.hot_score = hot_score
-#     tmp.save()
+    if click_score is not None:
+        hot_score = number_of_comments*9 + click_score
+    else:
+        hot_score = number_of_comments*10
+    tmp.hot_score = hot_score
+    tmp.save()
 
-# hot_articles = Articles.objects.filter(time__gt=time_72h_before).order_by('-hot_score',)[:number_of_articles]
-# print('Done load hot news')
+hot_articles = Articles.objects.filter(time__gt=time_72h_before).order_by('-hot_score',)[:number_of_articles]
+print('Done load hot news', len(hot_articles))
 # ------------------------------------------------
 # chỗ này là các bài báo được load lên theo dạng aritcleId : representation sau khi runserver
 print('Load represent articles.............')
@@ -155,7 +155,7 @@ for x in new_articles.values_list('articleID', flat=True):
         if tmp_categoryID.level == 0:
             article_category_dict[x] = tmp_categoryID.categoryID # sửa lỗi cho Minh, phải dạng articleID - categoryID
 
-print('article cate:',len(article_category_dict), article_category_dict)
+print('article-cate:',len(article_category_dict), article_category_dict)
 # ---------------------------------------------------------------
 
 user_category_count_dict= dict()
@@ -301,8 +301,11 @@ class User_Comment_ViewSet(viewsets.ModelViewSet):
         userID = data['userID']
         content = data['content']
         time = datetime.datetime.now().timestamp()
-        lit = list(User_Comments.objects.all().values_list('commentID', flat=True))
-        id  = max(lst) + 1
+        arr_comments = list(User_Comments.objects.all().values_list('commentID', flat=True))
+        if(len(arr_comments) == 0):
+            id = 1
+        else:
+            id  = max(arr_comments) + 1
         tmp = User_Comments(commentID = id, articleID=articleID, userID=userID, content=content, time = time  )
         tmp.save()
         dic ={}
@@ -360,7 +363,8 @@ class ArticleViewSet(viewsets.ModelViewSet):
         user_rep_convert = np.array(user_rep, dtype='float32').reshape(1,768)
         print(user_rep_convert.shape)
 
-        # --------------------
+        # --------------------------------------------------------------------
+        # begin NPA model
         # day la cho load 1 dic category va count tuong ung voi user
         user_category_tmp = User_Category.objects.filter(userID = userID).values_list('id', flat=True)
         user_category_tmp = list(user_category_tmp)
@@ -369,11 +373,15 @@ class ArticleViewSet(viewsets.ModelViewSet):
             tmp = User_Category.objects.get(pk=x)
             print('for user_category_tmp', x)
             user_category_count_dict[tmp.categoryID]=tmp.count
-        # -------------------------------------------
+        
+        # -------------------------------------------------------------------
         # load candiate (ở cache), prepare var data
         sample_candidate = list(all_articles_represent_convert)
         
-        userid = np.array([12], dtype='uint64') # fake data con bi loi 
+        userid = userID # userid user for train model
+        if userid not in userid_dict:
+            userid = random.randint(0, (len(userid_dict)-1) )
+        userid = np.array([userid], dtype='uint64') 
         print(userid.shape)
         userid_embedd = userEmbedd.predict(userid)
         print(userid_embedd)
@@ -480,7 +488,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
         dic['articleID'] = list(articles_list_return)
         return JsonResponse(dic)
 
-#  đã ok , tim theo str trong form data
+#search  đã ok , tim theo str trong form data
     @action(detail=False,methods=['post'])
     def search(self, request):
         data = request.data
@@ -524,7 +532,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
         dic['tags'] = list(tag)
         return JsonResponse(dic)
 
-# phần này đã ok
+#new_article phần này đã ok
     @action(detail=False)
     def new_article(self, request):
         new_article = new_articles
@@ -539,11 +547,13 @@ class ArticleViewSet(viewsets.ModelViewSet):
 
 
 # đã làm được nhưng thời gian quá lâu , cần cải thiện sau
-
+#hot_articles
     @action(detail=False)
     def hot_article(self, request):
         hot_article = hot_articles
+        print(hot_article)
         page = self.paginate_queryset(hot_article)
+        
         if page is not None:
             serializer = self.get_serializer(page, many=True)
             return self.get_paginated_response(serializer.data)
