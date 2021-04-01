@@ -25,6 +25,12 @@ from keras.layers import *
 from keras.models import Model
 from keras import backend as K
 import tensorflow as tf
+import os
+import argparse
+from minh_modules import Sampling_articles
+
+# keras cuda
+os.environ["CUDA_VISIBLE_DEVICES"]= '6'
 
 # load models and file pkl
 file = open('./resources/phobert_embed_mat.pkl', 'rb')
@@ -44,7 +50,7 @@ print(userEmbedd)
 #--------------------------------------------------------------------
 # define cache_days
 time_now = int(datetime.datetime.now().timestamp())
-cache_days = 10
+cache_days = 15
 time_72h_before = time_now - 60 * 60 * 24 * cache_days
 
 # number articles save cache
@@ -157,6 +163,7 @@ for x in new_articles.values_list('articleID', flat=True):
 print('article-cate:',len(article_category_dict))
 # ---------------------------------------------------------------
 user_category_count_dict= dict()
+
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -346,6 +353,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
 
     @action(detail=False,methods=['post'])
     def get_personal_article(self, request):
+        global user_category_count_dict # server need global variables
         all_time = time.time()
         start = time.time()
         data = request.data
@@ -409,6 +417,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
         # print(score_sort_dict)
 
         # fake data count for category
+        user_category_count_dict = dict()
         user_category_count_dict={
             "1": 2,
             "2": 3,
@@ -419,58 +428,9 @@ class ArticleViewSet(viewsets.ModelViewSet):
         # đây là hàm để sampling data
         print('Day la sampling data------------------------------')
         start = time.time()
-        NUMBER_OF_ARTICLES = 50
-        def get_homepage_articles(data_dict, user_dict):
-            #Get articles categories id
-            user =  [[int(key), user_dict[key]] for key in user_dict]
-            user_category = [category[0] for category in user] 
-            # Check probability
-            user.insert(0, [0, 0]) 
-            user_category_df = pd.DataFrame(user, columns=['categoryID', 'count'])
-            user_category_df['prob'] = 0.0
-            def cal_prob():
-                sum = 0
-                for category_score in user_category_df['count']:
-                    sum += category_score
-                sum_prob = 0
-                for index, row in user_category_df.iterrows():
-                    prob = row['count']/sum
-                    sum_prob += prob
-                    user_category_df.at[index, 'prob'] = sum_prob
-            cal_prob()   
-            article_list =  [[key, data_dict[key]] for key in data_dict]
-            articles_df = pd.DataFrame(article_list, columns = ['articleID', 'category'])
-            in_category_df = pd.DataFrame(columns = ['articleID'])
-
-            #Divide articles into two lists    
-            in_category_list = []
-            out_category_list = []
-            for index, row in articles_df.iterrows():
-                if row['category'] in user_category:
-                    in_category_df = in_category_df.append(articles_df.loc[index])
-                else:
-                    out_category_list.append(articles_df.loc[index]['articleID'])
-            run_out_of_article = True
-            for j in range(NUMBER_OF_ARTICLES):
-                magic = random.random()
-                for i in range(len(user_category_df.index) - 1):
-                    if user_category_df.iloc[i]['prob'] <= magic and magic <= user_category_df.iloc[i+1]['prob']:
-                        id = int(user_category_df.iloc[i+1]['categoryID'])
-                        for index, row in in_category_df.iterrows():
-                            if id == row['category']:
-                                in_category_list.append(row['articleID'])
-                                in_category_df = in_category_df.drop(index = index)
-                                run_out_of_article = False
-                                break
-                        if run_out_of_article:
-                            user_category_df.at[i, 'count'] = 0
-                            cal_prob()
-                        run_out_of_article = True
-                if len(in_category_df.index) == 0:
-                    return in_category_list + out_category_list
-            return in_category_list + out_category_list
+       
         
-        articles_list_return = (get_homepage_articles(article_category_dict, user_category_count_dict))
+        articles_list_return = (Sampling_articles.get_homepage_articles(article_category_dict, user_category_count_dict))
         articles_list_return = [int(x) for x in articles_list_return]
         print(articles_list_return[0:10])
         print(type(articles_list_return[0]))
@@ -485,6 +445,46 @@ class ArticleViewSet(viewsets.ModelViewSet):
         all_time = time.time()- all_time
         print(f'time all for handle personalize articles {all_time} second')
         return JsonResponse(dic)
+
+    #--------------------------------------------
+    # get related_articles
+    @action(detail=False,methods=['post'])
+    def get_related_articles_by_id(self, request):
+        data = request.data
+        articleID = int(data['articleID'])
+        articleID_list = list(new_articles.values_list('articleID', flat=True))
+
+        # list_of_categoryID = list(Article_Category.objects.filter(articleID = x).values_list('categoryID', flat=True))
+        # list_of_tagID = list(Article_Tags.objects.filter(articleID = x).values_list('tagID', flat=True))
+
+        dict_tag_and_category = {}
+        for x in articleID_list:
+            lst=[]
+            lst.append(list(Article_Category.objects.filter(articleID = x).values_list('categoryID', flat=True)))
+            lst.append(list(Article_Tags.objects.filter(articleID = x).values_list('tagID', flat=True)))
+            dict_tag_and_category[x] = lst
+        
+        # dict_tag_and_category[articleID] = [list_of_categoryID,list_of_tagID]
+
+        dic_count={}
+        for x in articleID_list:
+            dic_count[x] = 0
+        for x in articleID_list:
+                for i in dict_tag_and_category[x][0]:
+                    if dict_tag_and_category[articleID][0].count(i) == 1:
+                        dic_count[x] += 2
+        
+        for x in articleID_list:
+                for i in dict_tag_and_category[x][1]:
+                    if dict_tag_and_category[articleID][1].count(i) ==1:
+                        dic_count[x] += 1
+
+        dic_count = {k: v for k, v in sorted(dic_count.items(), key=lambda item: item[1],reverse=True)}
+        
+        tmp_dic  = {}
+        tmp_dic["articles"] = list(dic_count.keys())[0:6]
+
+        return JsonResponse(tmp_dic) 
 
 #search  đã ok , tim theo str trong form data
     @action(detail=False,methods=['post'])
