@@ -30,7 +30,7 @@ import argparse
 from minh_modules import Sampling_articles
 
 # keras cuda
-os.environ["CUDA_VISIBLE_DEVICES"]= '6'
+os.environ["CUDA_VISIBLE_DEVICES"]= '-1'
 
 # load models and file pkl
 file = open('./resources/phobert_embed_mat.pkl', 'rb')
@@ -50,7 +50,7 @@ print(userEmbedd)
 #--------------------------------------------------------------------
 # define cache_days
 time_now = int(datetime.datetime.now().timestamp())
-cache_days = 15
+cache_days = 8
 time_72h_before = time_now - 60 * 60 * 24 * cache_days
 
 # number articles save cache
@@ -386,18 +386,39 @@ class ArticleViewSet(viewsets.ModelViewSet):
         userid = np.array([userid], dtype='uint64') 
         print(userid.shape)
         userid_embedd = userEmbedd.predict(userid)
-        print(userid_embedd)
+        print('userid_embedd',userid_embedd.shape)
 
+
+        def __candidate_rep(arr_candidate_raw):
         # load input article_rep for score
-        multiple_inputs_newsEncoder = [] # need to load in memory
-        for articleID in sample_candidate:
-            print('load input rep:', articleID)
-            article_represent = np.array(all_articles_represent_convert[articleID])
-            print('article convert:', article_represent.shape)
-            input_newsEncoder = [userid_embedd, article_represent]
-            candidate_rep = newsEncoder.news_encoder.predict(input_newsEncoder)
-            multiple_inputs_newsEncoder.append(candidate_rep)
-        print(len(multiple_inputs_newsEncoder))
+            print(arr_candidate_raw)
+            multiple_inputs_newsEncoder = [] # need to load in memory
+            for articleID in arr_candidate_raw[0]:
+                # print('load input rep:', articleID)
+                article_represent = np.array(all_articles_represent_convert[articleID])
+                # print('article convert:', article_represent.shape)
+                input_newsEncoder = [userid_embedd, article_represent]
+                candidate_rep = newsEncoder.news_encoder.predict(input_newsEncoder)
+                multiple_inputs_newsEncoder.append(candidate_rep)
+            print(len(multiple_inputs_newsEncoder))
+            return multiple_inputs_newsEncoder
+        def _pool_calcualte_uids(sample_candidate, cores, func):
+            import numpy as np
+            from multiprocessing import Pool
+
+            n_cores = cores
+            pool = Pool(n_cores)
+            uids_split = np.array_split(sample_candidate, n_cores)
+            arguments = []
+            for i in range(n_cores):
+                arg = (uids_split[i], i)
+                arguments.append(arg)
+            print('something pool4')
+            result_list = pool.starmap(func, arguments)
+            print('something pool2')
+            return result_list
+        tmp = _pool_calcualte_uids(sample_candidate, cores=16, func=__candidate_rep)
+        len(tmp)
 
         user_vector = user_rep_convert
         newsEncoder_sample = multiple_inputs_newsEncoder
@@ -405,8 +426,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
         print(len(traingen))
         all_score = multiScore_model.Score.predict(traingen)
 
-        end = time.time()
-        print(f'time: {(end-start)/60}s')
+
         
         # return score sort articleID
         print('all_score',all_score.shape)
@@ -423,14 +443,16 @@ class ArticleViewSet(viewsets.ModelViewSet):
             "2": 3,
             "3": 5
         }
-
+        end = time.time()
+        print(f'time score: {(end-start)}s')
         #--------------------------------------------------------------------
         # đây là hàm để sampling data
         print('Day la sampling data------------------------------')
         start = time.time()
-       
+
+        sampling_articles = Sampling_articles(50)
         
-        articles_list_return = (Sampling_articles.get_homepage_articles(article_category_dict, user_category_count_dict))
+        articles_list_return = (sampling_articles.get_homepage_articles(article_category_dict, user_category_count_dict))
         articles_list_return = [int(x) for x in articles_list_return]
         print(articles_list_return[0:10])
         print(type(articles_list_return[0]))

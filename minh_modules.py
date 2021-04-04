@@ -2,9 +2,10 @@ import pandas as pd
 import numpy as np
 
 class Sampling_articles:
-    NUMBER_OF_ARTICLES = 50
+    def __init__(self, number_of_articles):
+        self.NUMBER_OF_ARTICLES = number_of_articles
 
-    def get_homepage_articles(data_dict, user_dict):
+    def get_homepage_articles(self, data_dict, user_dict):
         #Get articles categories id
         user_category = [int(key) for key in user_dict]
         user_category_count = [user_dict[key] for key in user_dict]
@@ -31,7 +32,7 @@ class Sampling_articles:
             else:
                 out_category_list.append(articles_df.loc[index]['articleID'])
         run_out_of_article = True
-        for j in range(NUMBER_OF_ARTICLES):
+        for j in range(self.NUMBER_OF_ARTICLES):
             magic = np.random.choice(user_category,p= probs)
             try:
                 in_category_list.append(category_article_list[magic].pop(0))
