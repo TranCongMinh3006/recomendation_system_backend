@@ -9,6 +9,19 @@ import json
 from django.http import JsonResponse
 from rest_framework.response import Response
 import datetime
+#---------------------------------------------------------
+#15phut update tin cua ban 1 lan 
+# import threading
+
+# # dict_personal_articles={}
+
+# def hello_world():
+#     threading.Timer(60.0, hello_world).start() # called every minute
+
+# hello_world()
+
+
+
 
 #----------------------------------------------------------------
 # import minhmoc sampling
@@ -49,7 +62,7 @@ print(userEmbedd)
 #--------------------------------------------------------------------
 # define cache_days
 time_now = int(datetime.datetime.now().timestamp())
-cache_days = 15
+cache_days = 20
 time_72h_before = time_now - 60 * 60 * 24 * cache_days
 
 # number articles save cache
@@ -97,28 +110,28 @@ newsEncoder = NewsEncoder(embedding_mat)
 
 # # # ----------------------------------------------------------------
 # # chỗ này là các hot articles
-# print('Load hot articles......................')
-# hot_article_in72h = Articles.objects.filter(
-#     time__gt=time_72h_before)
-# print('finish hot filters')
-# hot_article_in72h_id = hot_article_in72h.values_list('articleID', flat=True)
-# print(len(hot_article_in72h_id))
-# for i in list(hot_article_in72h_id):
-#     tmp = Articles.objects.get(pk=i)
-#     click_score = tmp.click_counter
-#     ID = tmp.articleID
-#     number_of_comments = User_Comments.objects.filter(
-#         articleID=ID).count()
+print('Load hot articles......................')
+hot_article_in72h = Articles.objects.filter(
+    time__gt=time_72h_before)
+print('finish hot filters')
+hot_article_in72h_id = hot_article_in72h.values_list('articleID', flat=True)
+print(len(hot_article_in72h_id))
+for i in list(hot_article_in72h_id):
+    tmp = Articles.objects.get(pk=i)
+    click_score = tmp.click_counter
+    ID = tmp.articleID
+    number_of_comments = User_Comments.objects.filter(
+        articleID=ID).count()
 
-#     if click_score is not None:
-#         hot_score = number_of_comments*9 + click_score
-#     else:
-#         hot_score = number_of_comments*10
-#     tmp.hot_score = hot_score
-#     tmp.save()
+    if click_score is not None:
+        hot_score = number_of_comments*9 + click_score
+    else:
+        hot_score = number_of_comments*10
+    tmp.hot_score = hot_score
+    tmp.save()
 
-# hot_articles = Articles.objects.filter(time__gt=time_72h_before).order_by('-hot_score',)[:number_of_articles]
-# print('Done load hot news', len(hot_articles))
+hot_articles = Articles.objects.filter(time__gt=time_72h_before).order_by('-hot_score',)[:number_of_articles]
+print('Done load hot news', len(hot_articles))
 
 # ------------------------------------------------
 # chỗ này là các bài báo được load lên theo dạng aritcleId : representation sau khi runserver
@@ -440,13 +453,13 @@ class ArticleViewSet(viewsets.ModelViewSet):
         print(f'Time run sampling MinhMoc: {(end-start)}s', )
         
         # CongMinh code return format for frontend
-        dic = {}
-        dic['articleID'] = list(articles_list_return)
+        dict_personal_articles = {}
+        dict_personal_articles['articleID'] = list(articles_list_return)
 
         # get time all
         all_time = time.time()- all_time
         print(f'time all for handle personalize articles {all_time} second')
-        return JsonResponse(dic)
+        return JsonResponse(dict_personal_articles)
 
     @action(detail=False,methods=['post'])
     def get_related_articles_by_id(self, request):
