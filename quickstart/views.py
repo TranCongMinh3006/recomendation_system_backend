@@ -49,7 +49,7 @@ print(userEmbedd)
 #--------------------------------------------------------------------
 # define cache_days
 time_now = int(datetime.datetime.now().timestamp())
-cache_days = 20
+cache_days = 15
 time_72h_before = time_now - 60 * 60 * 24 * cache_days
 
 # number articles save cache
@@ -97,28 +97,28 @@ newsEncoder = NewsEncoder(embedding_mat)
 
 # # # ----------------------------------------------------------------
 # # chỗ này là các hot articles
-print('Load hot articles......................')
-hot_article_in72h = Articles.objects.filter(
-    time__gt=time_72h_before)
-print('finish hot filters')
-hot_article_in72h_id = hot_article_in72h.values_list('articleID', flat=True)
-print(len(hot_article_in72h_id))
-for i in list(hot_article_in72h_id):
-    tmp = Articles.objects.get(pk=i)
-    click_score = tmp.click_counter
-    ID = tmp.articleID
-    number_of_comments = User_Comments.objects.filter(
-        articleID=ID).count()
+# print('Load hot articles......................')
+# hot_article_in72h = Articles.objects.filter(
+#     time__gt=time_72h_before)
+# print('finish hot filters')
+# hot_article_in72h_id = hot_article_in72h.values_list('articleID', flat=True)
+# print(len(hot_article_in72h_id))
+# for i in list(hot_article_in72h_id):
+#     tmp = Articles.objects.get(pk=i)
+#     click_score = tmp.click_counter
+#     ID = tmp.articleID
+#     number_of_comments = User_Comments.objects.filter(
+#         articleID=ID).count()
 
-    if click_score is not None:
-        hot_score = number_of_comments*9 + click_score
-    else:
-        hot_score = number_of_comments*10
-    tmp.hot_score = hot_score
-    tmp.save()
+#     if click_score is not None:
+#         hot_score = number_of_comments*9 + click_score
+#     else:
+#         hot_score = number_of_comments*10
+#     tmp.hot_score = hot_score
+#     tmp.save()
 
-hot_articles = Articles.objects.filter(time__gt=time_72h_before).order_by('-hot_score',)[:number_of_articles]
-print('Done load hot news', len(hot_articles))
+# hot_articles = Articles.objects.filter(time__gt=time_72h_before).order_by('-hot_score',)[:number_of_articles]
+# print('Done load hot news', len(hot_articles))
 
 # ------------------------------------------------
 # chỗ này là các bài báo được load lên theo dạng aritcleId : representation sau khi runserver
@@ -200,6 +200,8 @@ class User_CategoryViewSet(viewsets.ModelViewSet):
         dic ={}
         dic['status_post'] = "ok"
         return JsonResponse(dic)
+
+
 
 
 class UsersViewSet(viewsets.ModelViewSet):
@@ -446,6 +448,41 @@ class ArticleViewSet(viewsets.ModelViewSet):
         print(f'time all for handle personalize articles {all_time} second')
         return JsonResponse(dic)
 
+    @action(detail=False,methods=['post'])
+    def get_related_articles_by_id(self, request):
+        data = request.data
+        articleID = int(data['articleID'])
+        articleID_list = list(new_articles.values_list('articleID', flat=True))
+        # list_of_categoryID = list(Article_Category.objects.filter(articleID = x).values_list('categoryID', flat=True))
+        # list_of_tagID = list(Article_Tags.objects.filter(articleID = x).values_list('tagID', flat=True))
+        dict_tag_and_category = {}
+        for x in articleID_list:
+            lst=[]
+            lst.append(list(Article_Category.objects.filter(articleID = x).values_list('categoryID', flat=True)))
+            lst.append(list(Article_Tags.objects.filter(articleID = x).values_list('tagID', flat=True)))
+            dict_tag_and_category[x] = lst
+        
+        dic_count={}
+        for x in articleID_list:
+            dic_count[x] = 0
+        for x in articleID_list:
+                for i in dict_tag_and_category[x][0]:
+                    if dict_tag_and_category[articleID][0].count(i) > 0:
+                        dic_count[x] += 2
+        
+        for x in articleID_list:
+                for i in dict_tag_and_category[x][1]:
+                    if dict_tag_and_category[articleID][1].count(i) > 0:
+                        dic_count[x] += 1
+
+        dic_count = sorted(dic_count.items(), key = lambda kv:(kv[1], kv[0]))[-6:]
+        tmp_lst=[]
+        for i in dic_count:
+            tmp_lst.append(i[0])
+        dic = {}
+        dic["articleIDs"] = tmp_lst[::-1]
+        return JsonResponse(dic)
+
 #search  đã ok , tim theo str trong form data
     @action(detail=False,methods=['post'])
     def search(self, request):
@@ -461,14 +498,22 @@ class ArticleViewSet(viewsets.ModelViewSet):
 
 # phần này đã ok , trả về artical detail  và tagid, commentid
 
-
+    # @action(detail=False,methods=['post'])
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
-        print(request.data)
+        # data = request.data
         # phan nay can them tang cho bang user_category them 1 va them biet time vao User_view
-        # obj = User_Category.objects.get(userID=1002722676)
-        # obj.count +=1
-        # obj.save()
+        # userID = request.GET.get('userID')
+        articleID = instance.articleID
+        userID = request.GET.get('userID')
+        print(userID, articleID)
+        if userID is not None:
+            categoryID = int(Articles.objects.get(articleID = articleID).category)
+            obj = User_Category.objects.get(userID=userID, categoryID = categoryID)
+            obj.count +=1
+            print(obj.categoryID, obj.userID)
+            obj.save()
+
 
         tag = Article_Tags.objects.filter(
             articleID=instance.articleID).values_list('tagID', flat=True)
