@@ -184,6 +184,7 @@ class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().order_by('-date_joined')
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
+    
 
 class GroupViewSet(viewsets.ModelViewSet):
     """
@@ -257,6 +258,14 @@ class UsersViewSet(viewsets.ModelViewSet):
         # usersID = User.objects.get(username = username)
         dic['userID'] = userID
         dic['username'] = username
+        return JsonResponse(dic)
+
+    @action(detail=False, methods=['post'])
+    def check_logout(self, request, *args, **kwargs):
+        data = request.data
+        userID = data['userID']
+        dic ={}
+        dic['status_post'] = "ok"
         return JsonResponse(dic)
 
 
@@ -355,6 +364,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
         dic['articleID'] = list(article_id)
         return JsonResponse(dic)
 
+check_user_login = dict()
 
 class ArticleViewSet(viewsets.ModelViewSet):
     """
@@ -363,7 +373,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
     queryset = Articles.objects.all()
     serializer_class = ArticlesSerializer
     # permission_classes = [permissions.IsAuthenticated]
-
+    
     @action(detail=False,methods=['post'])
     def get_personal_article(self, request):
         all_time = time.time()
@@ -372,94 +382,100 @@ class ArticleViewSet(viewsets.ModelViewSet):
         print(data)
         userID = data['id']
         print('userID from frontend:', userID)
-        user_rep = Users.objects.get(userId = userID).representation
-        user_rep = json.loads(user_rep) # do loi
-        user_rep_convert = np.array(user_rep, dtype='float32').reshape(1,768)
-        print(user_rep_convert.shape)
-
-        # --------------------------------------------------------------------
-        # begin NPA model
-        # day la cho load 1 dic category va count tuong ung voi user
-        global user_category_count_dict
-        user_category_tmp = User_Category.objects.filter(userID = userID).values_list('id', flat=True)
-        user_category_tmp = list(user_category_tmp)
-        print('user_category is here')
-        for x in user_category_tmp:
-            tmp = User_Category.objects.get(pk=x)
-            print('for user_category_tmp', x)
-            user_category_count_dict[tmp.categoryID]=tmp.count
         
-        # -------------------------------------------------------------------
-        # load candiate (ở cache), prepare variable data
-        sample_candidate = list(all_articles_represent_convert)
-        
-        userid = userID # userid user for train model
-        if userid not in userid_dict:
-            userid = random.randint(0, (len(userid_dict)-1) )
-        userid = np.array([userid], dtype='uint64') 
-        print(userid.shape)
-        userid_embedd = userEmbedd.predict(userid)
-        print(userid_embedd)
+        if userID not in check_user_login:
+            user_rep = Users.objects.get(userId = userID).representation
+            user_rep = json.loads(user_rep) # do loi
+            user_rep_convert = np.array(user_rep, dtype='float32').reshape(1,768)
+            print(user_rep_convert.shape)
 
-        # load input article_rep for score
-        multiple_inputs_newsEncoder = [] # need to load in memory
-        for articleID in sample_candidate:
-            print('load input rep:', articleID)
-            article_represent = np.array(all_articles_represent_convert[articleID])
-            print('article convert:', article_represent.shape)
-            input_newsEncoder = [article_represent, userid_embedd]
-            candidate_rep = newsEncoder.news_encoder.predict(input_newsEncoder)
-            multiple_inputs_newsEncoder.append(candidate_rep)
-        print(len(multiple_inputs_newsEncoder))
+            # --------------------------------------------------------------------
+            # begin NPA model
+            # day la cho load 1 dic category va count tuong ung voi user
+            global user_category_count_dict
+            user_category_tmp = User_Category.objects.filter(userID = userID).values_list('id', flat=True)
+            user_category_tmp = list(user_category_tmp)
+            print('user_category is here')
+            for x in user_category_tmp:
+                tmp = User_Category.objects.get(pk=x)
+                print('for user_category_tmp', x)
+                user_category_count_dict[tmp.categoryID]=tmp.count
+            
+            # -------------------------------------------------------------------
+            # load candiate (ở cache), prepare variable data
+            sample_candidate = list(all_articles_represent_convert)
+            
+            userid = userID # userid user for train model
+            if userid not in userid_dict:
+                userid = random.randint(0, (len(userid_dict)-1) )
+            userid = np.array([userid], dtype='uint64') 
+            print(userid.shape)
+            userid_embedd = userEmbedd.predict(userid)
+            print(userid_embedd)
 
-        user_vector = user_rep_convert
-        newsEncoder_sample = multiple_inputs_newsEncoder
-        traingen = newsEncoder_sample + [user_vector]
-        print(len(traingen))
-        all_score = multiScore_model.Score.predict(traingen)
+            # load input article_rep for score
+            multiple_inputs_newsEncoder = [] # need to load in memory
+            for articleID in sample_candidate:
+                print('load input rep:', articleID)
+                article_represent = np.array(all_articles_represent_convert[articleID])
+                print('article convert:', article_represent.shape)
+                input_newsEncoder = [article_represent, userid_embedd]
+                candidate_rep = newsEncoder.news_encoder.predict(input_newsEncoder)
+                multiple_inputs_newsEncoder.append(candidate_rep)
+            print(len(multiple_inputs_newsEncoder))
 
-        end = time.time()
-        print(f'time: {(end-start)/60}s')
-        
-        # return score sort articleID
-        print('all_score',all_score.shape)
-        score_dict = dict()
-        for idx, articleID in enumerate(sample_candidate):
-            score_dict[articleID] = all_score[0][idx]
-        score_sort_dict = dict( sorted(score_dict.items(), key=operator.itemgetter(1),reverse=True))
-        # print(score_sort_dict)
+            user_vector = user_rep_convert
+            newsEncoder_sample = multiple_inputs_newsEncoder
+            traingen = newsEncoder_sample + [user_vector]
+            print(len(traingen))
+            all_score = multiScore_model.Score.predict(traingen)
 
-        # # fake data count for category
-        # user_category_count_dict={
-        #     "1": 2,
-        #     "2": 3,
-        #     "3": 5
-        # }
+            end = time.time()
+            print(f'time: {(end-start)/60}s')
+            
+            # return score sort articleID
+            print('all_score',all_score.shape)
+            score_dict = dict()
+            for idx, articleID in enumerate(sample_candidate):
+                score_dict[articleID] = all_score[0][idx]
+            score_sort_dict = dict( sorted(score_dict.items(), key=operator.itemgetter(1),reverse=True))
+            # print(score_sort_dict)
 
-        #--------------------------------------------------------------------
-        # đây là hàm để sampling data
-        print('Day la sampling data------------------------------')
-        start = time.time()
+            # # fake data count for category
+            # user_category_count_dict={
+            #     "1": 2,
+            #     "2": 3,
+            #     "3": 5
+            # }
 
-        # minhmoc sampling  
-        NUMBER_OF_ARTICLES = 50
-        sampling_articles =Sampling_articles(NUMBER_OF_ARTICLES)
-        articles_list_return = (sampling_articles.get_homepage_articles(article_category_dict, user_category_count_dict))
+            #--------------------------------------------------------------------
+            # đây là hàm để sampling data
+            print('Day la sampling data------------------------------')
+            start = time.time()
 
-        articles_list_return = [int(x) for x in articles_list_return]
-        print(articles_list_return[0:10])
-        print(type(articles_list_return[0]))
-        end = time.time()
-        print(f'Time run sampling MinhMoc: {(end-start)}s', )
-        
-        # CongMinh code return format for frontend
-        dict_personal_articles = {}
-        dict_personal_articles['articleID'] = list(articles_list_return)
+            # minhmoc sampling  
+            NUMBER_OF_ARTICLES = 50
+            sampling_articles =Sampling_articles(NUMBER_OF_ARTICLES)
+            articles_list_return = (sampling_articles.get_homepage_articles(article_category_dict, user_category_count_dict))
 
-        # get time all
-        all_time = time.time()- all_time
-        print(f'time all for handle personalize articles {all_time} second')
-        return JsonResponse(dict_personal_articles)
+            articles_list_return = [int(x) for x in articles_list_return]
+            print(articles_list_return[0:10])
+            print(type(articles_list_return[0]))
+            end = time.time()
+            print(f'Time run sampling MinhMoc: {(end-start)}s', )
+            
+            # CongMinh code return format for frontend
+            dict_personal_articles = {}
+            dict_personal_articles['articleID'] = list(articles_list_return)
+
+            check_user_login[userID] = dict_personal_articles
+
+            # get time all
+            all_time = time.time()- all_time
+            print(f'time all for handle personalize articles {all_time} second')
+            return JsonResponse(dict_personal_articles)
+        else:
+            return JsonResponse(check_user_login[userID])
 
     @action(detail=False,methods=['post'])
     def get_related_articles_by_id(self, request):
