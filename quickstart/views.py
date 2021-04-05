@@ -11,6 +11,8 @@ from rest_framework.response import Response
 import datetime
 
 #----------------------------------------------------------------
+# import minhmoc sampling
+from minh_modules import Sampling_articles
 
 # thuytt load all class
 import operator
@@ -26,11 +28,8 @@ from keras.models import Model
 from keras import backend as K
 import tensorflow as tf
 import os
-import argparse
-from minh_modules import Sampling_articles
 
-# keras cuda
-os.environ["CUDA_VISIBLE_DEVICES"]= '-1'
+os.environ["CUDA_VISIBLE_DEVICES"]="6"
 
 # load models and file pkl
 file = open('./resources/phobert_embed_mat.pkl', 'rb')
@@ -50,11 +49,11 @@ print(userEmbedd)
 #--------------------------------------------------------------------
 # define cache_days
 time_now = int(datetime.datetime.now().timestamp())
-cache_days = 8
+cache_days = 20
 time_72h_before = time_now - 60 * 60 * 24 * cache_days
 
 # number articles save cache
-number_of_articles = 2000
+number_of_articles = 1000
 print(f'number of articles in cache: {number_of_articles}')
 
 # # # -----------------------------------------------------------------
@@ -90,7 +89,7 @@ class NewsEncoder:
         attention_a = Dot((2, 1))([news_cnn_input, Dense(self.__embedding_dim, activation='tanh')(userid_dense_input)])
         attention_weight = Activation('softmax')(attention_a)
         news_rep = keras.layers.Dot((1, 1))([news_cnn_input, attention_weight])
-        self.news_encoder = Model([userid_dense_input, news_cnn_input], news_rep)
+        self.news_encoder = Model([news_cnn_input, userid_dense_input], news_rep)
 
 newsEncoder = NewsEncoder(embedding_mat)
 #----------------------------------------------------------------
@@ -163,7 +162,6 @@ for x in new_articles.values_list('articleID', flat=True):
 print('article-cate:',len(article_category_dict))
 # ---------------------------------------------------------------
 user_category_count_dict= dict()
-
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -353,7 +351,6 @@ class ArticleViewSet(viewsets.ModelViewSet):
 
     @action(detail=False,methods=['post'])
     def get_personal_article(self, request):
-        global user_category_count_dict # server need global variables
         all_time = time.time()
         start = time.time()
         data = request.data
@@ -368,6 +365,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
         # --------------------------------------------------------------------
         # begin NPA model
         # day la cho load 1 dic category va count tuong ung voi user
+        global user_category_count_dict
         user_category_tmp = User_Category.objects.filter(userID = userID).values_list('id', flat=True)
         user_category_tmp = list(user_category_tmp)
         print('user_category is here')
@@ -386,39 +384,18 @@ class ArticleViewSet(viewsets.ModelViewSet):
         userid = np.array([userid], dtype='uint64') 
         print(userid.shape)
         userid_embedd = userEmbedd.predict(userid)
-        print('userid_embedd',userid_embedd.shape)
+        print(userid_embedd)
 
-
-        def __candidate_rep(arr_candidate_raw):
         # load input article_rep for score
-            print(arr_candidate_raw)
-            multiple_inputs_newsEncoder = [] # need to load in memory
-            for articleID in arr_candidate_raw[0]:
-                # print('load input rep:', articleID)
-                article_represent = np.array(all_articles_represent_convert[articleID])
-                # print('article convert:', article_represent.shape)
-                input_newsEncoder = [userid_embedd, article_represent]
-                candidate_rep = newsEncoder.news_encoder.predict(input_newsEncoder)
-                multiple_inputs_newsEncoder.append(candidate_rep)
-            print(len(multiple_inputs_newsEncoder))
-            return multiple_inputs_newsEncoder
-        def _pool_calcualte_uids(sample_candidate, cores, func):
-            import numpy as np
-            from multiprocessing import Pool
-
-            n_cores = cores
-            pool = Pool(n_cores)
-            uids_split = np.array_split(sample_candidate, n_cores)
-            arguments = []
-            for i in range(n_cores):
-                arg = (uids_split[i], i)
-                arguments.append(arg)
-            print('something pool4')
-            result_list = pool.starmap(func, arguments)
-            print('something pool2')
-            return result_list
-        tmp = _pool_calcualte_uids(sample_candidate, cores=16, func=__candidate_rep)
-        len(tmp)
+        multiple_inputs_newsEncoder = [] # need to load in memory
+        for articleID in sample_candidate:
+            print('load input rep:', articleID)
+            article_represent = np.array(all_articles_represent_convert[articleID])
+            print('article convert:', article_represent.shape)
+            input_newsEncoder = [article_represent, userid_embedd]
+            candidate_rep = newsEncoder.news_encoder.predict(input_newsEncoder)
+            multiple_inputs_newsEncoder.append(candidate_rep)
+        print(len(multiple_inputs_newsEncoder))
 
         user_vector = user_rep_convert
         newsEncoder_sample = multiple_inputs_newsEncoder
@@ -426,7 +403,8 @@ class ArticleViewSet(viewsets.ModelViewSet):
         print(len(traingen))
         all_score = multiScore_model.Score.predict(traingen)
 
-
+        end = time.time()
+        print(f'time: {(end-start)/60}s')
         
         # return score sort articleID
         print('all_score',all_score.shape)
@@ -436,23 +414,23 @@ class ArticleViewSet(viewsets.ModelViewSet):
         score_sort_dict = dict( sorted(score_dict.items(), key=operator.itemgetter(1),reverse=True))
         # print(score_sort_dict)
 
-        # fake data count for category
-        user_category_count_dict = dict()
-        user_category_count_dict={
-            "1": 2,
-            "2": 3,
-            "3": 5
-        }
-        end = time.time()
-        print(f'time score: {(end-start)}s')
+        # # fake data count for category
+        # user_category_count_dict={
+        #     "1": 2,
+        #     "2": 3,
+        #     "3": 5
+        # }
+
         #--------------------------------------------------------------------
         # đây là hàm để sampling data
         print('Day la sampling data------------------------------')
         start = time.time()
 
-        sampling_articles = Sampling_articles(50)
-        
+        # minhmoc sampling  
+        NUMBER_OF_ARTICLES = 50
+        sampling_articles =Sampling_articles(NUMBER_OF_ARTICLES)
         articles_list_return = (sampling_articles.get_homepage_articles(article_category_dict, user_category_count_dict))
+
         articles_list_return = [int(x) for x in articles_list_return]
         print(articles_list_return[0:10])
         print(type(articles_list_return[0]))
@@ -467,46 +445,6 @@ class ArticleViewSet(viewsets.ModelViewSet):
         all_time = time.time()- all_time
         print(f'time all for handle personalize articles {all_time} second')
         return JsonResponse(dic)
-
-    #--------------------------------------------
-    # get related_articles
-    @action(detail=False,methods=['post'])
-    def get_related_articles_by_id(self, request):
-        data = request.data
-        articleID = int(data['articleID'])
-        articleID_list = list(new_articles.values_list('articleID', flat=True))
-
-        # list_of_categoryID = list(Article_Category.objects.filter(articleID = x).values_list('categoryID', flat=True))
-        # list_of_tagID = list(Article_Tags.objects.filter(articleID = x).values_list('tagID', flat=True))
-
-        dict_tag_and_category = {}
-        for x in articleID_list:
-            lst=[]
-            lst.append(list(Article_Category.objects.filter(articleID = x).values_list('categoryID', flat=True)))
-            lst.append(list(Article_Tags.objects.filter(articleID = x).values_list('tagID', flat=True)))
-            dict_tag_and_category[x] = lst
-        
-        # dict_tag_and_category[articleID] = [list_of_categoryID,list_of_tagID]
-
-        dic_count={}
-        for x in articleID_list:
-            dic_count[x] = 0
-        for x in articleID_list:
-                for i in dict_tag_and_category[x][0]:
-                    if dict_tag_and_category[articleID][0].count(i) == 1:
-                        dic_count[x] += 2
-        
-        for x in articleID_list:
-                for i in dict_tag_and_category[x][1]:
-                    if dict_tag_and_category[articleID][1].count(i) ==1:
-                        dic_count[x] += 1
-
-        dic_count = {k: v for k, v in sorted(dic_count.items(), key=lambda item: item[1],reverse=True)}
-        
-        tmp_dic  = {}
-        tmp_dic["articles"] = list(dic_count.keys())[0:6]
-
-        return JsonResponse(tmp_dic) 
 
 #search  đã ok , tim theo str trong form data
     @action(detail=False,methods=['post'])
